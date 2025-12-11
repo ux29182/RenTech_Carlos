@@ -137,12 +137,9 @@ def analyze_seasonality_summary(df):
     df_s["Ret"] = df_s["Ret"] * 100
     stats = df_s.groupby("Day")["Ret"].agg(["mean", lambda x: (x > 0).mean() * 100])
     
-    # Encontrar mejor y peor
     best_day = stats["mean"].idxmax()
     worst_day = stats["mean"].idxmin()
     today_name = pd.Timestamp.now().day_name()
-    
-    # Estrategia de hoy
     today_stats = stats.loc[today_name] if today_name in stats.index else None
     
     return best_day, worst_day, today_stats, stats
@@ -177,53 +174,39 @@ tab0, tab1, tab2, tab3 = st.tabs(["🏠 COMMAND CENTER", "🚀 TÁCTICA", "🌐 
 # === TAB 0: MASTER CONTROLLER ===
 with tab0:
     if processed_df is not None:
-        # Variables Clave
         res = processed_df
         last_st = res["Regime"].iloc[-1]
         last_px = res["Close"].iloc[-1]
         last_sma = res["SMA50"].iloc[-1]
         
-        # 1. Dirección
         if last_px > last_sma: trend_emoji, trend_txt = "🐂", "BULL (Alcista)"
         else: trend_emoji, trend_txt = "🐻", "BEAR (Bajista)"
         
-        # 2. Riesgo
         names = {0: "🟢 CALMA", 1: "🟡 TRANSICIÓN", 2: "🔴 CAOS"}
         risk_txt = names[last_st]
         
-        # 3. Tiempo (Hoy)
         best_d, worst_d, today_st, _ = analyze_seasonality_summary(res)
         today_name = pd.Timestamp.now().day_name()
         
         today_verdict = "NEUTRO"
         if today_st is not None:
-            if today_st["mean"] > 0 and today_st["<lambda_0>"] > 55: today_verdict = "✅ DÍA DE ORO (Operar Fuerte)"
-            elif today_st["<lambda_0>"] < 45: today_verdict = "🩸 DÍA TRAMPA (Cuidado/Ventas)"
-            else: today_verdict = "💤 DÍA LENTO (Scalping)"
+            if today_st["mean"] > 0 and today_st["<lambda_0>"] > 53: today_verdict = "✅ DÍA DE ORO"
+            elif today_st["<lambda_0>"] < 47: today_verdict = "🩸 DÍA TRAMPA"
+            else: today_verdict = "💤 DÍA LENTO"
 
-        # --- PANEL DE COMANDO ---
         st.markdown(f"## Resumen Ejecutivo: {nombre_activo}")
-        
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("PRECIO ACTUAL", f"{last_px:.4f}", f"{res['Ret'].iloc[-1]:.2%}")
-        with col2:
-            st.metric("TENDENCIA MAESTRA", trend_txt, trend_emoji)
-        with col3:
-            st.metric("RÉGIMEN DE RIESGO", risk_txt, "HMM AI")
-        with col4:
-            st.metric(f"ESTADÍSTICA DE HOY ({today_name})", today_verdict, f"WinRate: {today_st['<lambda_0>']:.1f}%" if today_st is not None else "N/A")
+        with col1: st.metric("PRECIO ACTUAL", f"{last_px:.4f}", f"{res['Ret'].iloc[-1]:.2%}")
+        with col2: st.metric("TENDENCIA MAESTRA", trend_txt, trend_emoji)
+        with col3: st.metric("RÉGIMEN DE RIESGO", risk_txt, "HMM AI")
+        with col4: st.metric(f"ESTADÍSTICA DE HOY", today_verdict, today_name)
 
         st.markdown("---")
         
-        # --- SECCIÓN DE INTELIGENCIA RÁPIDA ---
         c_scan, c_space = st.columns(2)
-        
         with c_scan:
-            st.subheader("📡 Radar Global (Escáner)")
-            # Escáner simplificado para el dashboard
+            st.subheader("📡 Radar Global (Rápido)")
             context_dict = {k:v for k,v in context_options.items() if v != context_ticker}
-            scan_res = []
             for k, v in context_dict.items():
                 try:
                     time.sleep(0.1)
@@ -236,7 +219,7 @@ with tab0:
 
         with c_space:
             st.subheader("🧬 Aliados y Enemigos")
-            if st.button("Buscar Correlaciones Rápidas"):
+            if st.button("Buscar Relaciones"):
                 with st.spinner("Analizando..."):
                     df_all = get_all_assets_data(activos_disponibles, period="6mo")
                     if not df_all.empty:
@@ -244,14 +227,12 @@ with tab0:
                         my_name = nombre_activo.split(" ")[1]
                         if my_name in corr.columns:
                             s = corr[my_name].sort_values(ascending=False)
-                            st.success(f"🤝 **Mejor Aliado:** {s.index[1]} ({s.iloc[1]:.2f})")
-                            st.error(f"⚔️ **Mayor Enemigo:** {s.index[-1]} ({s.iloc[-1]:.2f})")
-                            st.caption("Si tu Aliado sube, tú confirmas compra. Si tu Enemigo sube, tú dudas.")
-
+                            st.success(f"🤝 **Aliado:** {s.index[1]} ({s.iloc[1]:.2f})")
+                            st.error(f"⚔️ **Enemigo:** {s.index[-1]} ({s.iloc[-1]:.2f})")
     else:
         st.error("Inicializando sistema... Espera un momento.")
 
-# === TAB 1: TÁCTICA (Velocímetro + Gráfico) ===
+# === TAB 1: TÁCTICA (CON ESCÁNER COMPLETO RESTAURADO) ===
 with tab1:
     if processed_df is not None:
         last_px = res["Close"].iloc[-1]
@@ -266,11 +247,54 @@ with tab1:
 
         st.plotly_chart(plot_interactive(res, ticker, context_ticker), use_container_width=True)
         
-        st.info("💡 **Consejo Táctico:** Usa esta pestaña para ver el 'Timing' exacto. Si el fondo es VERDE y la línea Amarilla está DEBAJO del precio -> **Strong Buy**.")
+        # --- AQUÍ ESTÁ EL ESCÁNER COMPLETO QUE PEDISTE ---
+        st.markdown("---")
+        st.subheader("🌐 Escáner Global: Probabilidades de Régimen")
+        
+        scan_results = []
+        context_dict = {k:v for k,v in context_options.items() if v != context_ticker}
+        scan_bar = st.progress(0)
+        
+        for i, (c_name, c_code) in enumerate(context_dict.items()):
+            time.sleep(0.5) # Pausa para evitar bloqueo de Yahoo
+            try:
+                d_scan = get_data_pro(ticker, c_code, period)
+                if len(d_scan) > 50:
+                    _, m_scan = run_hmm_robust(d_scan)
+                    if m_scan:
+                        r_scan, _ = run_hmm_robust(d_scan)
+                        l_reg = r_scan["Regime"].iloc[-1]
+                        probs = m_scan.transmat_[l_reg]
+                        scan_results.append({
+                            "Factor": c_name, 
+                            "Régimen": l_reg, 
+                            "Calma": probs[0], 
+                            "Caos": probs[2]
+                        })
+            except: pass
+            scan_bar.progress((i + 1) / len(context_dict))
+        
+        scan_bar.empty()
+        
+        if scan_results:
+            df_scan = pd.DataFrame(scan_results)
+            regime_map = {0: "🟢 Calma", 1: "🟡 Transición", 2: "🔴 Caos"}
+            df_scan["Estado"] = df_scan["Régimen"].map(regime_map)
+            
+            st.dataframe(
+                df_scan[["Factor", "Estado", "Calma", "Caos"]],
+                use_container_width=True,
+                column_config={
+                    "Calma": st.column_config.ProgressColumn("Prob. Calma", format="%.1f%%", min_value=0, max_value=1),
+                    "Caos": st.column_config.ProgressColumn("Prob. Caos", format="%.1f%%", min_value=0, max_value=1),
+                }, hide_index=True
+            )
+        else:
+            st.warning("No se pudo cargar la tabla detallada (Yahoo Limit). Intenta en 1 minuto.")
 
-# === TAB 2: ESPACIO (Heatmap) ===
+# === TAB 2: ESPACIO ===
 with tab2:
-    st.subheader("🌐 Matriz de Correlación")
+    st.subheader("🌐 La Red Neuronal del Mercado")
     if st.button("Generar Mapa de Calor Completo"):
         with st.spinner("Procesando..."):
             df_all = get_all_assets_data(activos_disponibles)
@@ -280,15 +304,12 @@ with tab2:
                 fig.update_layout(template="plotly_dark", height=600)
                 st.plotly_chart(fig, use_container_width=True)
 
-# === TAB 3: TIEMPO (Agenda Semanal) ===
+# === TAB 3: TIEMPO ===
 with tab3:
     if processed_df is not None:
         best_d, worst_d, _, stats = analyze_seasonality_summary(res)
         
         st.subheader("📅 Tu Agenda Semanal de Trading")
-        st.markdown(f"Activo: **{nombre_activo}** | Memoria: **{periodo}**")
-        
-        # Tarjetas Visuales Organicas
         days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
         stats = stats.reindex(days_order)
         
@@ -299,14 +320,13 @@ with tab3:
                 ret = row["mean"]
                 win = row["<lambda_0>"]
                 
-                # Lógica de Color de Tarjeta
                 border_color = "#555"
                 status = "NEUTRO"
                 if ret > 0 and win > 53: 
-                    border_color = "#00FF00" # Verde
+                    border_color = "#00FF00"
                     status = "✅ ORO"
                 elif win < 47: 
-                    border_color = "#FF4B4B" # Rojo
+                    border_color = "#FF4B4B"
                     status = "🩸 TRAMPA"
                 
                 with cols[i]:
@@ -317,18 +337,14 @@ with tab3:
                         <hr style="margin: 5px 0; border-color: #333;">
                         <h2 style="margin:0; color: white;">{win:.0f}%</h2>
                         <p style="font-size: 12px;">Win Rate</p>
-                        <p style="color: {'lightgreen' if ret > 0 else 'salmon'}; font-weight:bold;">{ret:.2f}%</p>
                     </div>
                     """, unsafe_allow_html=True)
         
         st.markdown("---")
         c1, c2 = st.columns(2)
-        with c1:
-            st.success(f"🏆 **Mejor Día:** {best_d} (Mayor Retorno Promedio)")
-        with c2:
-            st.error(f"💀 **Peor Día:** {worst_d} (Evitar Compras)")
+        with c1: st.success(f"🏆 **Mejor Día:** {best_d}")
+        with c2: st.error(f"💀 **Peor Día:** {worst_d}")
 
-        # Gráficos detallados abajo
         with st.expander("Ver Gráficos Detallados"):
             colors = ['#00FF00' if v > 0 else '#FF4B4B' for v in stats["mean"]]
             fig_day = go.Figure(data=[go.Bar(x=stats.index, y=stats["mean"], marker_color=colors)])
