@@ -37,7 +37,7 @@ st.title("🧠 RenTech Quantum: THE COMMANDER")
 # --- 2. BARRA LATERAL ---
 st.sidebar.header("🕹️ Centro de Control")
 
-if st.sidebar.button("🔄 Actualizar Sistemas"):
+if st.sidebar.button("🔄 Forzar Actualización"):
     st.cache_data.clear()
 
 activos_disponibles = {
@@ -73,22 +73,29 @@ periodo = st.sidebar.selectbox("Memoria Histórica", ["2y", "5y", "10y"], index=
 @st.cache_data
 def get_data_pro(symbol, context_symbol, period):
     try:
+        # Descarga optimizada
         t = yf.download(symbol, period=period, interval="1d", progress=False)
         c = yf.download(context_symbol, period=period, interval="1d", progress=False)
         
+        # Limpieza de MultiIndex (El problema técnico común)
         if isinstance(t.columns, pd.MultiIndex): t.columns = t.columns.get_level_values(0)
         if isinstance(c.columns, pd.MultiIndex): c.columns = c.columns.get_level_values(0)
         
         if t.empty or c.empty: return pd.DataFrame()
         
+        # Fusión de datos segura
         df = pd.DataFrame(index=t.index)
         df["Close"] = t["Close"]
         df["High"] = t["High"]
         df["Low"] = t["Low"]
-        df["Context"] = c["Close"]
+        
+        # Alinear fechas (Inner Join)
+        df = df.join(c["Close"].rename("Context"), how="inner")
+        
         df.dropna(inplace=True)
         return df
-    except: return pd.DataFrame()
+    except Exception as e:
+        return pd.DataFrame()
 
 @st.cache_data
 def get_all_assets_data(assets_dict, period="1y"):
@@ -105,10 +112,12 @@ def get_all_assets_data(assets_dict, period="1y"):
 
 def run_hmm_robust(data):
     df = data.copy()
+    # Cálculos matemáticos
     df["Ret"] = np.log(df["Close"] / df["Close"].shift(1))
     df["Vol"] = (df["High"] - df["Low"]) / df["Close"]
     df["Context_Ret"] = np.log(df["Context"] / df["Context"].shift(1))
     df["SMA50"] = df["Close"].rolling(window=50).mean()
+    
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.dropna(inplace=True)
     
@@ -160,7 +169,8 @@ def plot_interactive(df, ticker, context_ticker):
     return fig
 
 # --- 4. PRE-CÁLCULO GLOBAL ---
-with st.spinner('Inicializando COMMANDER AI...'):
+with st.spinner('Inicializando Sistemas RenTech...'):
+    # Descargamos DATOS MAESTROS una sola vez
     raw_df = get_data_pro(ticker, context_ticker, periodo)
     processed_df = None
     model_hmm = None
@@ -168,10 +178,10 @@ with st.spinner('Inicializando COMMANDER AI...'):
     if not raw_df.empty and len(raw_df) > 50:
         processed_df, model_hmm = run_hmm_robust(raw_df)
 
-# --- 5. INTERFAZ DE PESTAÑAS ---
+# --- 5. INTERFAZ ---
 tab0, tab1, tab2, tab3 = st.tabs(["🏠 COMMAND CENTER", "🚀 TÁCTICA", "🌐 ESPACIO", "⏳ TIEMPO"])
 
-# === TAB 0: MASTER CONTROLLER ===
+# === TAB 0: COMMAND CENTER ===
 with tab0:
     if processed_df is not None:
         res = processed_df
@@ -199,27 +209,29 @@ with tab0:
         with col1: st.metric("PRECIO ACTUAL", f"{last_px:.4f}", f"{res['Ret'].iloc[-1]:.2%}")
         with col2: st.metric("TENDENCIA MAESTRA", trend_txt, trend_emoji)
         with col3: st.metric("RÉGIMEN DE RIESGO", risk_txt, "HMM AI")
-        with col4: st.metric(f"ESTADÍSTICA DE HOY", today_verdict, today_name)
+        with col4: st.metric(f"HOY: {today_name}", today_verdict, "Estadística")
 
         st.markdown("---")
         
         c_scan, c_space = st.columns(2)
         with c_scan:
-            st.subheader("📡 Radar Global (Rápido)")
+            st.subheader("📡 Radar Rápido")
             context_dict = {k:v for k,v in context_options.items() if v != context_ticker}
             for k, v in context_dict.items():
                 try:
+                    # Descarga simple sin procesar para velocidad
                     time.sleep(0.1)
                     d = yf.download(v, period="5d", progress=False)
                     if isinstance(d.columns, pd.MultiIndex): d.columns = d.columns.get_level_values(0)
-                    pct = (d["Close"].iloc[-1] / d["Close"].iloc[-2]) - 1
-                    color = "inverse" if "^VIX" in v or "DX-Y" in v or "^TNX" in v else "normal"
-                    st.metric(k.split(" ")[1], f"{d['Close'].iloc[-1]:.2f}", f"{pct:.2%}", delta_color=color)
+                    if not d.empty:
+                        pct = (d["Close"].iloc[-1] / d["Close"].iloc[-2]) - 1
+                        color = "inverse" if "^VIX" in v or "DX-Y" in v or "^TNX" in v else "normal"
+                        st.metric(k.split(" ")[1], f"{d['Close'].iloc[-1]:.2f}", f"{pct:.2%}", delta_color=color)
                 except: pass
 
         with c_space:
-            st.subheader("🧬 Aliados y Enemigos")
-            if st.button("Buscar Relaciones"):
+            st.subheader("🧬 Correlación Instantánea")
+            if st.button("Buscar Aliados"):
                 with st.spinner("Analizando..."):
                     df_all = get_all_assets_data(activos_disponibles, period="6mo")
                     if not df_all.empty:
@@ -230,9 +242,9 @@ with tab0:
                             st.success(f"🤝 **Aliado:** {s.index[1]} ({s.iloc[1]:.2f})")
                             st.error(f"⚔️ **Enemigo:** {s.index[-1]} ({s.iloc[-1]:.2f})")
     else:
-        st.error("Inicializando sistema... Espera un momento.")
+        st.error("⚠️ Error de Datos Maestros. Recarga la página.")
 
-# === TAB 1: TÁCTICA (CON ESCÁNER COMPLETO RESTAURADO) ===
+# === TAB 1: TÁCTICA (ESCÁNER OPTIMIZADO) ===
 with tab1:
     if processed_df is not None:
         last_px = res["Close"].iloc[-1]
@@ -247,31 +259,46 @@ with tab1:
 
         st.plotly_chart(plot_interactive(res, ticker, context_ticker), use_container_width=True)
         
-        # --- AQUÍ ESTÁ EL ESCÁNER COMPLETO QUE PEDISTE ---
         st.markdown("---")
         st.subheader("🌐 Escáner Global: Probabilidades de Régimen")
         
         scan_results = []
         context_dict = {k:v for k,v in context_options.items() if v != context_ticker}
+        
+        # PREPARACIÓN DE DATOS PARA EL ESCÁNER
+        # Reutilizamos los datos del Ticker Principal (raw_df) para no descargarlo 5 veces
+        base_ticker_data = raw_df[["Close", "High", "Low"]].copy() 
+        
         scan_bar = st.progress(0)
         
         for i, (c_name, c_code) in enumerate(context_dict.items()):
-            time.sleep(0.5) # Pausa para evitar bloqueo de Yahoo
+            time.sleep(1.0) # Pausa de seguridad
             try:
-                d_scan = get_data_pro(ticker, c_code, period)
-                if len(d_scan) > 50:
-                    _, m_scan = run_hmm_robust(d_scan)
-                    if m_scan:
-                        r_scan, _ = run_hmm_robust(d_scan)
-                        l_reg = r_scan["Regime"].iloc[-1]
-                        probs = m_scan.transmat_[l_reg]
-                        scan_results.append({
-                            "Factor": c_name, 
-                            "Régimen": l_reg, 
-                            "Calma": probs[0], 
-                            "Caos": probs[2]
-                        })
-            except: pass
+                # 1. Descargamos SOLO el contexto (más rápido)
+                c_data = yf.download(c_code, period=period, interval="1d", progress=False)
+                if isinstance(c_data.columns, pd.MultiIndex): c_data.columns = c_data.columns.get_level_values(0)
+                
+                if not c_data.empty:
+                    # 2. Fusionamos con los datos base que ya tenemos (Ingeniería de datos)
+                    df_scan = base_ticker_data.join(c_data["Close"].rename("Context"), how="inner")
+                    
+                    if len(df_scan) > 50:
+                        # 3. Corremos modelo
+                        _, m_scan = run_hmm_robust(df_scan)
+                        if m_scan:
+                            r_scan, _ = run_hmm_robust(df_scan)
+                            l_reg = r_scan["Regime"].iloc[-1]
+                            probs = m_scan.transmat_[l_reg]
+                            scan_results.append({
+                                "Factor": c_name, 
+                                "Régimen": l_reg, 
+                                "Calma": probs[0], 
+                                "Caos": probs[2]
+                            })
+            except Exception as e:
+                # Si falla uno, no rompe el resto, pero lo registramos en consola si fuera necesario
+                pass
+            
             scan_bar.progress((i + 1) / len(context_dict))
         
         scan_bar.empty()
@@ -290,7 +317,7 @@ with tab1:
                 }, hide_index=True
             )
         else:
-            st.warning("No se pudo cargar la tabla detallada (Yahoo Limit). Intenta en 1 minuto.")
+            st.warning("⚠️ No se pudo conectar con el Escáner. Yahoo Finance puede estar inestable momentáneamente.")
 
 # === TAB 2: ESPACIO ===
 with tab2:
